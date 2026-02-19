@@ -31,15 +31,15 @@ type Message struct {
 // -- virtual actor system --
 type VirtualActorManager struct {
 	mu       sync.Mutex
-	Actors   map[string]*virtualActorEntry
+	actors   map[string]*virtualActorEntry
 	storage  ActorStorage // Optional, for actor state persistence
 	registry *registry    // Where actor handlers live (private)
 }
 
 type virtualActorEntry struct {
-	name     string
-	msgCh    chan actorMsg
-	quitCh   chan struct{}
+	name  string
+	msgCh chan actorMsg
+
 	lastUsed time.Time
 	state    interface{} // For optional persistence
 	registry *registry   // Reference for handler lookup
@@ -55,14 +55,19 @@ const virtualActorInactivity = 2 * time.Second
 // NewVirtualActorManager creates a new actor manager
 func NewVirtualActorManager() *VirtualActorManager {
 	return &VirtualActorManager{
-		Actors:   make(map[string]*virtualActorEntry),
+		actors:   make(map[string]*virtualActorEntry),
 		registry: &registry{},
 	}
 }
 
-// RegisterActor adds or updates an actor function by name (via manager only).
+// RegisterActor adds or updates an actor function by name
 func (vam *VirtualActorManager) RegisterActor(name string, fn ActorFunc) {
 	vam.registry.register(name, fn)
+}
+
+// RegisterManyActors adds or updates an actor function by name
+func (vam *VirtualActorManager) RegisterManyActors(regs map[string]ActorFunc) {
+	vam.registry.registerMany(regs)
 }
 
 // SetStorage sets the persistence backend for the manager.
@@ -73,7 +78,7 @@ func (vam *VirtualActorManager) SetStorage(s ActorStorage) {
 // CallActor sends a message to an actor (by name), activating it as needed.
 func (vam *VirtualActorManager) CallActor(ctx context.Context, actorName string, input interface{}, outputCh chan<- Message) {
 	vam.mu.Lock()
-	entry, ok := vam.Actors[actorName]
+	entry, ok := vam.actors[actorName]
 	if !ok {
 		// Actor activation: load state if persistence enabled
 		var loadedState interface{}
@@ -83,33 +88,34 @@ func (vam *VirtualActorManager) CallActor(ctx context.Context, actorName string,
 		entry = &virtualActorEntry{
 			name:     actorName,
 			msgCh:    make(chan actorMsg, 10),
-			quitCh:   make(chan struct{}),
 			lastUsed: time.Now(),
 			state:    loadedState,
 			registry: vam.registry, // propagate parent registry
 		}
-		vam.Actors[actorName] = entry
-		go entry.actorLoop(vam)
+		vam.actors[actorName] = entry
+		go entry.actorLoop(ctx, vam)
 	}
 	entry.lastUsed = time.Now()
 	vam.mu.Unlock()
 	entry.msgCh <- actorMsg{ctx: ctx, input: input, outputCh: outputCh}
 }
 
-func (a *virtualActorEntry) actorLoop(vam *VirtualActorManager) {
+func (a *virtualActorEntry) actorLoop(ctx context.Context, vam *VirtualActorManager) {
 	inactivityTimer := time.NewTimer(virtualActorInactivity)
 	defer inactivityTimer.Stop()
 	for {
 		select {
 		case msg := <-a.msgCh:
 			fn, ok := a.registry.get(a.name)
-			var result, err interface{}
-			var handlerInput interface{}
+
+			var result, err, handlerInput interface{}
+
 			if msg.input == nil && a.state != nil {
 				handlerInput = a.state // If no caller input, use persisted state
 			} else {
 				handlerInput = msg.input
 			}
+
 			if ok {
 				result, err = fn(msg.ctx, handlerInput)
 			} else {
@@ -138,10 +144,10 @@ func (a *virtualActorEntry) actorLoop(vam *VirtualActorManager) {
 				_ = vam.storage.Save(context.Background(), a.name, a.state)
 			}
 			vam.mu.Lock()
-			delete(vam.Actors, a.name)
+			delete(vam.actors, a.name)
 			vam.mu.Unlock()
 			return
-		case <-a.quitCh:
+		case <-ctx.Done():
 			return
 		}
 	}
