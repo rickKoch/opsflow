@@ -1,0 +1,54 @@
+# Binaries for programs and plugins
+*.exe
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Output of the go coverage tool
+*.coverprofile
+*.cov
+*.cover
+*.gcov
+
+# Go workspace file
+.owm
+
+# OS or editor direct junk
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Build, test, and tool caches
+bin/
+cover/
+dist/
+*.tmp
+
+# Generated Protobuf/grpc Go code
+remoteactor/*.pb.go
+
+# Go modules vendor dir (if used)
+vendor/
+
+# IDE/project meta
+.idea/
+.vscode/
+*.code-workspace
+
+# Logs and temp files
+*.log
+*.bak
+*~
+
+# Dependency graph
+Gopkg.lock
+Gopkg.toml
+
+# Ignore by Makefile (protoc downloads)
+bin/
+
+# (Optional) Uncomment to ignore Go build cache:
+# /go.sum

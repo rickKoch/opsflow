@@ -1,0 +1,71 @@
+package actor
+
+import (
+	"context"
+	"time"
+)
+
+// Message is a wrapper used internally.
+type Message struct {
+	Payload []byte
+	Type    string
+}
+
+// Actor is the interface user implementations should implement.
+type Actor interface {
+	Receive(ctx context.Context, msg Message)
+}
+
+// PID is the actor id.
+type PID string
+
+// Options for spawning actors.
+type SpawnOptions struct {
+	SupervisorStrategy string
+}
+
+// Mailbox interface to support enqueuing and draining for persistence.
+type Mailbox interface {
+	Enqueue(msg Message)
+	Dequeue() (Message, bool)
+	Drain() []Message
+}
+
+// default mailbox implementation using channel with buffer.
+type chanMailbox struct {
+	ch chan Message
+}
+
+func newChanMailbox(size int) *chanMailbox { return &chanMailbox{ch: make(chan Message, size)} }
+
+func (m *chanMailbox) Enqueue(msg Message) { m.ch <- msg }
+
+func (m *chanMailbox) Dequeue() (Message, bool) {
+	select {
+	case msg := <-m.ch:
+		return msg, true
+	default:
+		return Message{}, false
+	}
+}
+
+func (m *chanMailbox) Drain() []Message {
+	var out []Message
+	for {
+		select {
+		case msg := <-m.ch:
+			out = append(out, msg)
+		default:
+			return out
+		}
+	}
+}
+
+// ActorRef is a local handle to actor runtime.
+type ActorRef struct {
+	ID      PID
+	mail    Mailbox
+	actor   Actor
+	stopped chan struct{}
+	created time.Time
+}
