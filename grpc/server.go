@@ -5,7 +5,7 @@ import (
 	"net"
 
 	"github.com/rickKoch/opsflow/actor"
-	"github.com/rickKoch/opsflow/grpc/gen"
+	genpb "github.com/rickKoch/opsflow/grpc/gen"
 	"google.golang.org/grpc"
 )
 
@@ -14,24 +14,38 @@ type Server struct {
 	reg *actor.Registry
 }
 
-func NewServer(reg *actor.Registry) *Server {
+// mustEmbedUnimplementedActorServiceServer satisfies generated interface for forward compatibility.
+// embed unimplemented to satisfy interface
+type unimplementedEmbed struct{}
+
+func (unimplementedEmbed) mustEmbedUnimplementedActorServiceServer() {}
+func (unimplementedEmbed) testEmbeddedByValue()                      {}
+
+// Server implements generated ActorServiceServer
+type ServerImpl struct {
+	genpb.UnimplementedActorServiceServer
+	srv *grpc.Server
+	reg *actor.Registry
+}
+
+func NewServer(reg *actor.Registry) *ServerImpl {
 	s := grpc.NewServer()
-	srv := &Server{srv: s, reg: reg}
+	srv := &ServerImpl{srv: s, reg: reg}
 	// register generated server implementation
-	gen.RegisterActorServiceServer(s, srv)
+	genpb.RegisterActorServiceServer(s, srv)
 	return srv
 }
 
-func (s *Server) Send(ctx context.Context, msg *gen.ActorMessage) (*gen.SendResponse, error) {
+func (s *ServerImpl) Send(ctx context.Context, msg *genpb.ActorMessage) (*genpb.SendResponse, error) {
 	p := actor.PID(msg.Pid)
 	m := actor.Message{Payload: msg.Payload, Type: msg.Typ}
 	if err := s.reg.Send(ctx, p, m); err != nil {
-		return &gen.SendResponse{Ok: false, Error: err.Error()}, nil
+		return &genpb.SendResponse{Ok: false, Error: err.Error()}, nil
 	}
-	return &gen.SendResponse{Ok: true}, nil
+	return &genpb.SendResponse{Ok: true}, nil
 }
 
-func (s *Server) Serve(laddr string) error {
+func (s *ServerImpl) Serve(laddr string) error {
 	lis, err := net.Listen("tcp", laddr)
 	if err != nil {
 		return err
