@@ -67,7 +67,6 @@ func TestPersistenceMailboxSnapshot(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
 	store := persistence.NewFileStore(dir)
-	reg := NewRegistry(store, logging.StdLogger{}, nil)
 
 	// create persistent mailbox directly and enqueue messages
 	pm := newPersistentMailbox(store, persistence.PID("actor2"), 4)
