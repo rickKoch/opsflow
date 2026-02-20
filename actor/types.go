@@ -17,6 +17,16 @@ type Actor interface {
 	Receive(ctx context.Context, msg Message)
 }
 
+// ActorStarter is an optional interface actors can implement to receive start lifecycle event.
+type ActorStarter interface {
+	Started(ctx context.Context)
+}
+
+// ActorStopper is an optional interface actors can implement to receive stop lifecycle event.
+type ActorStopper interface {
+	Stopped(ctx context.Context)
+}
+
 // PID is the actor id.
 type PID string
 

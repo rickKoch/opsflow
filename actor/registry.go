@@ -99,10 +99,18 @@ func (NotFoundError) Error() string { return "actor not found" }
 func (r *Registry) runActor(ctx context.Context, ref *ActorRef) {
 	ctx, span := r.tracer.Start(ctx, "runActor")
 	defer span.End(nil)
+	// optional lifecycle: call Started if implemented
+	if s, ok := ref.actor.(interface{ Started(context.Context) }); ok {
+		s.Started(ctx)
+	}
 	for {
 		select {
 		case <-ctx.Done():
 			r.log.Info("actor context done", "id", ref.ID)
+			// lifecycle stop
+			if st, ok := ref.actor.(interface{ Stopped(context.Context) }); ok {
+				st.Stopped(ctx)
+			}
 			close(ref.stopped)
 			return
 		default:
