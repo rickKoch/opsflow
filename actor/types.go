@@ -2,6 +2,7 @@ package actor
 
 import (
 	"context"
+	"sync"
 	"time"
 )
 
@@ -65,7 +66,26 @@ func (m *chanMailbox) Drain() []Message {
 type ActorRef struct {
 	ID      PID
 	mail    Mailbox
+	mu      sync.Mutex
 	actor   Actor
 	stopped chan struct{}
 	created time.Time
+}
+
+func (r *ActorRef) Enqueue(msg Message) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.mail.Enqueue(msg)
+}
+
+// SnapshotMailbox drains and then restores the mailbox, returning a copy of current messages.
+func (r *ActorRef) SnapshotMailbox() []Message {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	msgs := r.mail.Drain()
+	// restore
+	for _, m := range msgs {
+		r.mail.Enqueue(m)
+	}
+	return msgs
 }
