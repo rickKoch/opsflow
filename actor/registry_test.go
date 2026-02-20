@@ -69,16 +69,11 @@ func TestPersistenceMailboxSnapshot(t *testing.T) {
 	store := persistence.NewFileStore(dir)
 	reg := NewRegistry(store, logging.StdLogger{}, nil)
 
-	// create actor and enqueue messages
-	ta := newTestActor()
-	_, err := reg.Spawn(ctx, PID("actor2"), ta, 4)
-	if err != nil {
-		t.Fatalf("spawn error: %v", err)
-	}
-	_ = reg.Send(ctx, PID("actor2"), Message{Payload: []byte("m1")})
-	_ = reg.Send(ctx, PID("actor2"), Message{Payload: []byte("m2")})
+	// create persistent mailbox directly and enqueue messages
+	pm := newPersistentMailbox(store, persistence.PID("actor2"), 4)
+	pm.Enqueue(Message{Payload: []byte("m1")})
+	pm.Enqueue(Message{Payload: []byte("m2")})
 
-	// mailbox should persist automatically for persistent mailbox
 	// allow a brief moment for persistence to complete
 	time.Sleep(50 * time.Millisecond)
 

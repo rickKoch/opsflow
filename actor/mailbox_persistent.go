@@ -1,6 +1,7 @@
 package actor
 
 import (
+	"context"
 	"sync"
 
 	"github.com/rickKoch/opsflow/persistence"
@@ -17,7 +18,7 @@ type persistentMailbox struct {
 func newPersistentMailbox(p persistence.Persistence, id persistence.PID, _size int) *persistentMailbox {
 	pm := &persistentMailbox{pers: p, id: id}
 	if p != nil {
-		if loaded, err := p.LoadMailbox(nil, id); err == nil && len(loaded) > 0 {
+		if loaded, err := p.LoadMailbox(context.Background(), id); err == nil && len(loaded) > 0 {
 			for _, b := range loaded {
 				pm.msgs = append(pm.msgs, Message{Payload: b})
 			}
@@ -34,7 +35,7 @@ func (m *persistentMailbox) persistLocked() error {
 	for _, mm := range m.msgs {
 		out = append(out, mm.Payload)
 	}
-	return m.pers.SaveMailbox(nil, m.id, out)
+	return m.pers.SaveMailbox(context.Background(), m.id, out)
 }
 
 func (m *persistentMailbox) Enqueue(msg Message) {
