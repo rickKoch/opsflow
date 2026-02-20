@@ -4,6 +4,8 @@ import (
 	"context"
 	"sync"
 	"time"
+
+	"github.com/rickKoch/opsflow/persistence"
 )
 
 // Message is a wrapper used internally.
@@ -58,6 +60,14 @@ func (m *chanMailbox) Dequeue() (Message, bool) {
 	default:
 		return Message{}, false
 	}
+}
+
+// Helper to create mailbox according to persistence availability.
+func newMailboxFor(id PID, pers persistence.Persistence, size int) Mailbox {
+	if pers != nil {
+		return newPersistentMailbox(pers, persistence.PID(id), size)
+	}
+	return newChanMailbox(size)
 }
 
 func (m *chanMailbox) Drain() []Message {
