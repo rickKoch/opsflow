@@ -1,0 +1,17 @@
+syntax = "proto3";
+package grpc;
+
+message ActorMessage {
+  string pid = 1;
+  bytes payload = 2;
+  string typ = 3;
+}
+
+service ActorService {
+  rpc Send(ActorMessage) returns (SendResponse);
+}
+
+message SendResponse {
+  bool ok = 1;
+  string error = 2;
+}
