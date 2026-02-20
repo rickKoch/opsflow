@@ -111,6 +111,8 @@ func (r *Registry) runActor(ctx context.Context, ref *ActorRef) {
 			if st, ok := ref.actor.(interface{ Stopped(context.Context) }); ok {
 				st.Stopped(ctx)
 			}
+			// close mailbox flusher if supported
+			ref.mail.Close()
 			close(ref.stopped)
 			return
 		default:

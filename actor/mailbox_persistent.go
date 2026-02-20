@@ -23,7 +23,8 @@ type persistentMailbox struct {
 }
 
 func newPersistentMailbox(p persistence.Persistence, id persistence.PID, _size int) *persistentMailbox {
-	pm := &persistentMailbox{pers: p, id: id, flushInterval: 100 * time.Millisecond, flushThreshold: 10, flushCh: make(chan struct{}, 1), stopCh: make(chan struct{})}
+	// default to aggressive flush for now; can be tuned
+	pm := &persistentMailbox{pers: p, id: id, flushInterval: 10 * time.Millisecond, flushThreshold: 1, flushCh: make(chan struct{}, 1), stopCh: make(chan struct{})}
 	if p != nil {
 		if loaded, err := p.LoadMailbox(context.Background(), id); err == nil && len(loaded) > 0 {
 			for _, b := range loaded {
@@ -122,5 +123,10 @@ func (m *persistentMailbox) flusher() {
 
 // Close stops background flusher and persists messages.
 func (m *persistentMailbox) Close() {
-	close(m.stopCh)
+	select {
+	case <-m.stopCh:
+		return
+	default:
+		close(m.stopCh)
+	}
 }

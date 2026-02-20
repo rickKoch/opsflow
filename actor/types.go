@@ -42,6 +42,7 @@ type Mailbox interface {
 	Enqueue(msg Message)
 	Dequeue() (Message, bool)
 	Drain() []Message
+	Close()
 }
 
 // default mailbox implementation using channel with buffer.
@@ -81,6 +82,8 @@ func (m *chanMailbox) Drain() []Message {
 		}
 	}
 }
+
+func (m *chanMailbox) Close() {}
 
 // ActorRef is a local handle to actor runtime.
 type ActorRef struct {
