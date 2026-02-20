@@ -12,11 +12,12 @@ import (
 
 // Registry manages local actors.
 type Registry struct {
-	mu     sync.RWMutex
-	refs   map[PID]*ActorRef
-	pers   persistence.Persistence
-	log    logging.Logger
-	tracer tracing.Tracer
+	mu              sync.RWMutex
+	refs            map[PID]*ActorRef
+	pers            persistence.Persistence
+	log             logging.Logger
+	tracer          tracing.Tracer
+	persistInterval time.Duration
 }
 
 func NewRegistry(p persistence.Persistence, log logging.Logger, tracer tracing.Tracer) *Registry {
@@ -27,6 +28,41 @@ func NewRegistry(p persistence.Persistence, log logging.Logger, tracer tracing.T
 		tracer = tracing.NoopTracer{}
 	}
 	return &Registry{refs: make(map[PID]*ActorRef), pers: p, log: log, tracer: tracer}
+}
+
+// StartPersistenceLoop starts a background goroutine that periodically persists actor snapshots and mailboxes.
+func (r *Registry) StartPersistenceLoop(ctx context.Context, interval time.Duration) {
+	if r.pers == nil || interval <= 0 {
+		return
+	}
+	r.persistInterval = interval
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				_ = r.SaveAll(ctx)
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+}
+
+// SaveAll persists snapshots and mailboxes for all registered actors.
+func (r *Registry) SaveAll(ctx context.Context) error {
+	r.mu.RLock()
+	ids := make([]PID, 0, len(r.refs))
+	for id := range r.refs {
+		ids = append(ids, id)
+	}
+	r.mu.RUnlock()
+	for _, id := range ids {
+		_ = r.SaveSnapshot(ctx, id)
+		_ = r.SaveMailbox(ctx, id)
+	}
+	return nil
 }
 
 func (r *Registry) Spawn(ctx context.Context, id PID, a Actor, mailboxSize int) (*ActorRef, error) {
