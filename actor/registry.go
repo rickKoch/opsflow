@@ -72,7 +72,7 @@ func (r *Registry) Spawn(ctx context.Context, id PID, a Actor, mailboxSize int) 
 		return nil, nil
 	}
 	cctx, cancel := context.WithCancel(ctx)
-	ref := &ActorRef{ID: id, mail: newChanMailbox(mailboxSize), actor: a, stopped: make(chan struct{}), created: time.Now(), ctx: cctx, cancel: cancel}
+	ref := &ActorRef{ID: id, mail: newMailboxFor(id, r.pers, mailboxSize), actor: a, stopped: make(chan struct{}), created: time.Now(), ctx: cctx, cancel: cancel}
 	r.refs[id] = ref
 	go r.runActor(ref.ctx, ref)
 	r.log.Info("spawned actor", "id", id)

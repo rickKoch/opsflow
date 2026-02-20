@@ -78,10 +78,9 @@ func TestPersistenceMailboxSnapshot(t *testing.T) {
 	_ = reg.Send(ctx, PID("actor2"), Message{Payload: []byte("m1")})
 	_ = reg.Send(ctx, PID("actor2"), Message{Payload: []byte("m2")})
 
-	// persist mailbox
-	if err := reg.SaveMailbox(ctx, PID("actor2")); err != nil {
-		t.Fatalf("save mailbox error: %v", err)
-	}
+	// mailbox should persist automatically for persistent mailbox
+	// allow a brief moment for persistence to complete
+	time.Sleep(50 * time.Millisecond)
 
 	// ensure file exists
 	p := filepath.Join(dir, "actor2.mailbox.json")
