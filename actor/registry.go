@@ -71,9 +71,10 @@ func (r *Registry) Spawn(ctx context.Context, id PID, a Actor, mailboxSize int) 
 	if _, ok := r.refs[id]; ok {
 		return nil, nil
 	}
-	ref := &ActorRef{ID: id, mail: newChanMailbox(mailboxSize), actor: a, stopped: make(chan struct{}), created: time.Now()}
+	cctx, cancel := context.WithCancel(ctx)
+	ref := &ActorRef{ID: id, mail: newChanMailbox(mailboxSize), actor: a, stopped: make(chan struct{}), created: time.Now(), ctx: cctx, cancel: cancel}
 	r.refs[id] = ref
-	go r.runActor(ctx, ref)
+	go r.runActor(ref.ctx, ref)
 	r.log.Info("spawned actor", "id", id)
 	return ref, nil
 }
@@ -85,7 +86,7 @@ func (r *Registry) Send(ctx context.Context, id PID, msg Message) error {
 	if !ok {
 		return ErrNotFound
 	}
-	ref.mail.Enqueue(msg)
+	ref.Enqueue(msg)
 	return nil
 }
 

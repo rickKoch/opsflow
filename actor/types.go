@@ -69,6 +69,8 @@ type ActorRef struct {
 	mu      sync.Mutex
 	actor   Actor
 	stopped chan struct{}
+	ctx     context.Context
+	cancel  context.CancelFunc
 	created time.Time
 }
 
