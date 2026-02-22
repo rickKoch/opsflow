@@ -3,7 +3,6 @@ package workflow
 import (
 	"context"
 	"encoding/json"
-	"sync"
 	"testing"
 	"time"
 
@@ -16,18 +15,15 @@ func TestParallelStepsRunConcurrently(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
 	store := persistence.NewFileStore(dir)
+	// Use channels to deterministically assert both steps started before either finished.
+	startedCh := make(chan string, 2)
+	proceedCh := make(chan struct{})
 
-	var mu sync.Mutex
-	starts := map[string]time.Time{}
-
-	// router sleeps for a duration after recording start time
+	// router records start then waits until proceedCh is closed to finish.
 	router := func(ctx context.Context, pid actor.PID, msg actor.Message) error {
-		mu.Lock()
-		starts[string(pid)] = time.Now()
-		mu.Unlock()
-		// simulate work
+		startedCh <- string(pid)
 		select {
-		case <-time.After(200 * time.Millisecond):
+		case <-proceedCh:
 			return nil
 		case <-ctx.Done():
 			return ctx.Err()
@@ -47,7 +43,22 @@ func TestParallelStepsRunConcurrently(t *testing.T) {
 	// start parallel scheduler
 	_ = mgr.StartParallel(ctx, wf)
 
-	// wait for completion
+	// wait for both starts to be observed
+	got := map[string]bool{}
+	timeout := time.After(1 * time.Second)
+	for len(got) < 2 {
+		select {
+		case id := <-startedCh:
+			got[id] = true
+		case <-timeout:
+			t.Fatalf("timed out waiting for both steps to start, got=%v", got)
+		}
+	}
+
+	// both started; allow them to finish
+	close(proceedCh)
+
+	// wait for workflow to persist completion
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
 		b, _ := store.LoadSnapshot(ctx, persistence.PID("workflow:parallel_test"))
@@ -55,26 +66,13 @@ func TestParallelStepsRunConcurrently(t *testing.T) {
 			var st workflowState
 			if err := json.Unmarshal(b, &st); err == nil {
 				if st.Completed {
-					break
+					return
 				}
 			}
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-
-	mu.Lock()
-	defer mu.Unlock()
-	if starts["a"].IsZero() || starts["b"].IsZero() {
-		t.Fatalf("both steps should have started: starts=%v", starts)
-	}
-	diff := starts["a"].Sub(starts["b"]).Seconds()
-	if diff < 0 {
-		diff = -diff
-	}
-	// both should start within 100ms of each other when run in parallel
-	if diff > 0.1 {
-		t.Fatalf("steps did not start concurrently enough: diff=%v seconds", diff)
-	}
+	t.Fatalf("workflow did not complete in time")
 }
 
 // Test that dependencies are honored: step c should run after a and b complete.
@@ -83,15 +81,29 @@ func TestDependenciesEnforced(t *testing.T) {
 	dir := t.TempDir()
 	store := persistence.NewFileStore(dir)
 
-	var mu sync.Mutex
-	starts := map[string]time.Time{}
+	// Use channels to make ordering deterministic: a and b will signal when done;
+	// c will signal when it starts. Test asserts c started after both a and b signaled done.
+	doneA := make(chan struct{})
+	doneB := make(chan struct{})
+	startedC := make(chan struct{}, 1)
 
-	// router records invocation time
 	router := func(ctx context.Context, pid actor.PID, msg actor.Message) error {
-		mu.Lock()
-		starts[string(pid)] = time.Now()
-		mu.Unlock()
-		return nil
+		id := string(pid)
+		switch id {
+		case "a":
+			// simulate work then signal done
+			close(doneA)
+			return nil
+		case "b":
+			close(doneB)
+			return nil
+		case "c":
+			// record that c started
+			startedC <- struct{}{}
+			return nil
+		default:
+			return nil
+		}
 	}
 
 	mgr := NewManager(store, router, nil, nil)
@@ -107,28 +119,22 @@ func TestDependenciesEnforced(t *testing.T) {
 
 	_ = mgr.StartParallel(ctx, wf)
 
-	// wait for completion
-	deadline := time.Now().Add(3 * time.Second)
-	for time.Now().Before(deadline) {
-		b, _ := store.LoadSnapshot(ctx, persistence.PID("workflow:deps_test"))
-		if b != nil && len(b) > 0 {
-			var st workflowState
-			if err := json.Unmarshal(b, &st); err == nil {
-				if st.Completed {
-					break
-				}
-			}
+	// wait until c starts or timeout
+	timeout := time.After(2 * time.Second)
+	select {
+	case <-startedC:
+		// ensure both done signals occurred before c started
+		select {
+		case <-doneA:
+		default:
+			t.Fatalf("c started before a completed")
 		}
-		time.Sleep(10 * time.Millisecond)
-	}
-
-	mu.Lock()
-	defer mu.Unlock()
-	if starts["c"].IsZero() || starts["a"].IsZero() || starts["b"].IsZero() {
-		t.Fatalf("expected all steps to have started: %v", starts)
-	}
-	// c must start after both a and b
-	if !starts["c"].After(starts["a"]) || !starts["c"].After(starts["b"]) {
-		t.Fatalf("dependency ordering violated: starts=%v", starts)
+		select {
+		case <-doneB:
+		default:
+			t.Fatalf("c started before b completed")
+		}
+	case <-timeout:
+		t.Fatalf("timeout waiting for c to start")
 	}
 }
