@@ -70,8 +70,8 @@ func TestPropagation(t *testing.T) {
 		t.Fatalf("listen: %v", err)
 	}
 	srv := grpc.NewServer()
-	recvCh := make(chan *genpb.ShareActorsRequest, 4)
-	genpb.RegisterActorRegistryServer(srv, &testRegistryServer{recv: recvCh})
+	recvCh := make(chan *genpb.RegisterRequest, 4)
+	genpb.RegisterActorServiceServer(srv, &testRegisterHandler{reg: reg, recv: recvCh})
 	go srv.Serve(lis)
 	defer func() { srv.Stop(); lis.Close() }()
 
@@ -149,21 +149,11 @@ func (s *testActorServiceServer) Send(ctx context.Context, msg *genpb.ActorMessa
 	return &genpb.SendResponse{Ok: true}, nil
 }
 
-// testRegistryServer implements ActorRegistryServer for testing
-type testRegistryServer struct {
-	genpb.UnimplementedActorRegistryServer
-	recv chan *genpb.ShareActorsRequest
-}
-
-func (s *testRegistryServer) ShareActors(ctx context.Context, req *genpb.ShareActorsRequest) (*genpb.ShareActorsResponse, error) {
-	s.recv <- req
-	return &genpb.ShareActorsResponse{Success: true}, nil
-}
-
 // testRegisterHandler implements ActorServiceServer for registering remote actors
 type testRegisterHandler struct {
 	genpb.UnimplementedActorServiceServer
-	reg *actor.Registry
+	reg  *actor.Registry
+	recv chan *genpb.RegisterRequest
 }
 
 func (h *testRegisterHandler) Send(ctx context.Context, msg *genpb.ActorMessage) (*genpb.SendResponse, error) {
@@ -172,6 +162,14 @@ func (h *testRegisterHandler) Send(ctx context.Context, msg *genpb.ActorMessage)
 }
 
 func (h *testRegisterHandler) Register(ctx context.Context, req *genpb.RegisterRequest) (*genpb.RegisterResponse, error) {
+	// deliver the request to the test harness so assertions can observe it
+	if h.recv != nil {
+		select {
+		case h.recv <- req:
+		default:
+			// non-blocking send to avoid blocking propagation loop in tests
+		}
+	}
 	var remoteActors []actor.RemoteActorRef
 	now := time.Now()
 	for _, a := range req.GetActors() {

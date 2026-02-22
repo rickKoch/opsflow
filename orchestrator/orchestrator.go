@@ -85,7 +85,7 @@ func (o *Orchestrator) StartPropagation(ctx context.Context, peers []string, int
 				// gather local actors
 				locals := o.reg.ListLocalActors()
 				// build ShareActorsRequest
-				var req genpb.ShareActorsRequest
+				var req genpb.RegisterRequest
 				for _, a := range locals {
 					req.Actors = append(req.Actors, &genpb.ActorInfo{Name: string(a.ID), Address: a.Address})
 				}
@@ -100,10 +100,10 @@ func (o *Orchestrator) StartPropagation(ctx context.Context, peers []string, int
 							lastErr = err
 							o.log.Info("propagate: failed to get connection", "peer", p, "err", err, "attempt", i+1)
 						} else {
-							client := genpb.NewActorRegistryClient(conn)
+							client := genpb.NewActorServiceClient(conn)
 							// per-call timeout
 							callCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
-							_, err = client.ShareActors(callCtx, &req)
+							_, err = client.Register(callCtx, &req)
 							cancel()
 							if err == nil {
 								o.log.Info("propagate: success", "peer", p)
@@ -215,15 +215,4 @@ func (o *Orchestrator) HandleRegister(ctx context.Context, req *genpb.RegisterRe
 	}
 	o.reg.UpdateRemoteActors(ctx, remoteActors)
 	return &genpb.RegisterResponse{Success: true}, nil
-}
-
-// HandleShareActors handles ActorRegistry.ShareActors calls from peers.
-func (o *Orchestrator) HandleShareActors(ctx context.Context, req *genpb.ShareActorsRequest) (*genpb.ShareActorsResponse, error) {
-	var remoteActors []actor.RemoteActorRef
-	now := time.Now()
-	for _, a := range req.GetActors() {
-		remoteActors = append(remoteActors, actor.RemoteActorRef{ID: actor.PID(a.GetName()), Address: a.GetAddress(), LastSeen: now})
-	}
-	o.reg.UpdateRemoteActors(ctx, remoteActors)
-	return &genpb.ShareActorsResponse{Success: true}, nil
 }
