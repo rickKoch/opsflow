@@ -81,6 +81,269 @@ func (x *ActorMessage) GetTyp() string {
 	return ""
 }
 
+type ShareActorsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Actors        []*ActorInfo           `protobuf:"bytes,1,rep,name=actors,proto3" json:"actors,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ShareActorsRequest) Reset() {
+	*x = ShareActorsRequest{}
+	mi := &file_actor_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ShareActorsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ShareActorsRequest) ProtoMessage() {}
+
+func (x *ShareActorsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_actor_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ShareActorsRequest.ProtoReflect.Descriptor instead.
+func (*ShareActorsRequest) Descriptor() ([]byte, []int) {
+	return file_actor_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *ShareActorsRequest) GetActors() []*ActorInfo {
+	if x != nil {
+		return x.Actors
+	}
+	return nil
+}
+
+type ActorInfo struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Address       string                 `protobuf:"bytes,2,opt,name=address,proto3" json:"address,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ActorInfo) Reset() {
+	*x = ActorInfo{}
+	mi := &file_actor_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ActorInfo) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ActorInfo) ProtoMessage() {}
+
+func (x *ActorInfo) ProtoReflect() protoreflect.Message {
+	mi := &file_actor_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ActorInfo.ProtoReflect.Descriptor instead.
+func (*ActorInfo) Descriptor() ([]byte, []int) {
+	return file_actor_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *ActorInfo) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *ActorInfo) GetAddress() string {
+	if x != nil {
+		return x.Address
+	}
+	return ""
+}
+
+type ShareActorsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	Error         string                 `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ShareActorsResponse) Reset() {
+	*x = ShareActorsResponse{}
+	mi := &file_actor_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ShareActorsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ShareActorsResponse) ProtoMessage() {}
+
+func (x *ShareActorsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_actor_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ShareActorsResponse.ProtoReflect.Descriptor instead.
+func (*ShareActorsResponse) Descriptor() ([]byte, []int) {
+	return file_actor_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *ShareActorsResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
+func (x *ShareActorsResponse) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+type RegisterRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// unique identifier for the registering node/service
+	ServiceId string `protobuf:"bytes,1,opt,name=service_id,json=serviceId,proto3" json:"service_id,omitempty"`
+	// dialable address (host:port) for this service's ActorService
+	Address string `protobuf:"bytes,2,opt,name=address,proto3" json:"address,omitempty"`
+	// list of actor names currently hosted on the registering node
+	Actors        []*ActorInfo `protobuf:"bytes,3,rep,name=actors,proto3" json:"actors,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RegisterRequest) Reset() {
+	*x = RegisterRequest{}
+	mi := &file_actor_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RegisterRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RegisterRequest) ProtoMessage() {}
+
+func (x *RegisterRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_actor_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RegisterRequest.ProtoReflect.Descriptor instead.
+func (*RegisterRequest) Descriptor() ([]byte, []int) {
+	return file_actor_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *RegisterRequest) GetServiceId() string {
+	if x != nil {
+		return x.ServiceId
+	}
+	return ""
+}
+
+func (x *RegisterRequest) GetAddress() string {
+	if x != nil {
+		return x.Address
+	}
+	return ""
+}
+
+func (x *RegisterRequest) GetActors() []*ActorInfo {
+	if x != nil {
+		return x.Actors
+	}
+	return nil
+}
+
+type RegisterResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	Error         string                 `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RegisterResponse) Reset() {
+	*x = RegisterResponse{}
+	mi := &file_actor_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RegisterResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RegisterResponse) ProtoMessage() {}
+
+func (x *RegisterResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_actor_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RegisterResponse.ProtoReflect.Descriptor instead.
+func (*RegisterResponse) Descriptor() ([]byte, []int) {
+	return file_actor_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *RegisterResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
+func (x *RegisterResponse) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
 type SendResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Ok            bool                   `protobuf:"varint,1,opt,name=ok,proto3" json:"ok,omitempty"`
@@ -91,7 +354,7 @@ type SendResponse struct {
 
 func (x *SendResponse) Reset() {
 	*x = SendResponse{}
-	mi := &file_actor_proto_msgTypes[1]
+	mi := &file_actor_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -103,7 +366,7 @@ func (x *SendResponse) String() string {
 func (*SendResponse) ProtoMessage() {}
 
 func (x *SendResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_actor_proto_msgTypes[1]
+	mi := &file_actor_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -116,7 +379,7 @@ func (x *SendResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SendResponse.ProtoReflect.Descriptor instead.
 func (*SendResponse) Descriptor() ([]byte, []int) {
-	return file_actor_proto_rawDescGZIP(), []int{1}
+	return file_actor_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *SendResponse) GetOk() bool {
@@ -141,12 +404,31 @@ const file_actor_proto_rawDesc = "" +
 	"\fActorMessage\x12\x10\n" +
 	"\x03pid\x18\x01 \x01(\tR\x03pid\x12\x18\n" +
 	"\apayload\x18\x02 \x01(\fR\apayload\x12\x10\n" +
-	"\x03typ\x18\x03 \x01(\tR\x03typ\"4\n" +
+	"\x03typ\x18\x03 \x01(\tR\x03typ\"=\n" +
+	"\x12ShareActorsRequest\x12'\n" +
+	"\x06actors\x18\x01 \x03(\v2\x0f.grpc.ActorInfoR\x06actors\"9\n" +
+	"\tActorInfo\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
+	"\aaddress\x18\x02 \x01(\tR\aaddress\"E\n" +
+	"\x13ShareActorsResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x14\n" +
+	"\x05error\x18\x02 \x01(\tR\x05error\"s\n" +
+	"\x0fRegisterRequest\x12\x1d\n" +
+	"\n" +
+	"service_id\x18\x01 \x01(\tR\tserviceId\x12\x18\n" +
+	"\aaddress\x18\x02 \x01(\tR\aaddress\x12'\n" +
+	"\x06actors\x18\x03 \x03(\v2\x0f.grpc.ActorInfoR\x06actors\"B\n" +
+	"\x10RegisterResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x14\n" +
+	"\x05error\x18\x02 \x01(\tR\x05error\"4\n" +
 	"\fSendResponse\x12\x0e\n" +
 	"\x02ok\x18\x01 \x01(\bR\x02ok\x12\x14\n" +
-	"\x05error\x18\x02 \x01(\tR\x05error2>\n" +
+	"\x05error\x18\x02 \x01(\tR\x05error2y\n" +
 	"\fActorService\x12.\n" +
-	"\x04Send\x12\x12.grpc.ActorMessage\x1a\x12.grpc.SendResponseB'Z%github.com/rickKoch/opsflow/grpc;grpcb\x06proto3"
+	"\x04Send\x12\x12.grpc.ActorMessage\x1a\x12.grpc.SendResponse\x129\n" +
+	"\bRegister\x12\x15.grpc.RegisterRequest\x1a\x16.grpc.RegisterResponse2S\n" +
+	"\rActorRegistry\x12B\n" +
+	"\vShareActors\x12\x18.grpc.ShareActorsRequest\x1a\x19.grpc.ShareActorsResponseB'Z%github.com/rickKoch/opsflow/grpc;grpcb\x06proto3"
 
 var (
 	file_actor_proto_rawDescOnce sync.Once
@@ -160,19 +442,30 @@ func file_actor_proto_rawDescGZIP() []byte {
 	return file_actor_proto_rawDescData
 }
 
-var file_actor_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_actor_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
 var file_actor_proto_goTypes = []any{
-	(*ActorMessage)(nil), // 0: grpc.ActorMessage
-	(*SendResponse)(nil), // 1: grpc.SendResponse
+	(*ActorMessage)(nil),        // 0: grpc.ActorMessage
+	(*ShareActorsRequest)(nil),  // 1: grpc.ShareActorsRequest
+	(*ActorInfo)(nil),           // 2: grpc.ActorInfo
+	(*ShareActorsResponse)(nil), // 3: grpc.ShareActorsResponse
+	(*RegisterRequest)(nil),     // 4: grpc.RegisterRequest
+	(*RegisterResponse)(nil),    // 5: grpc.RegisterResponse
+	(*SendResponse)(nil),        // 6: grpc.SendResponse
 }
 var file_actor_proto_depIdxs = []int32{
-	0, // 0: grpc.ActorService.Send:input_type -> grpc.ActorMessage
-	1, // 1: grpc.ActorService.Send:output_type -> grpc.SendResponse
-	1, // [1:2] is the sub-list for method output_type
-	0, // [0:1] is the sub-list for method input_type
-	0, // [0:0] is the sub-list for extension type_name
-	0, // [0:0] is the sub-list for extension extendee
-	0, // [0:0] is the sub-list for field type_name
+	2, // 0: grpc.ShareActorsRequest.actors:type_name -> grpc.ActorInfo
+	2, // 1: grpc.RegisterRequest.actors:type_name -> grpc.ActorInfo
+	0, // 2: grpc.ActorService.Send:input_type -> grpc.ActorMessage
+	4, // 3: grpc.ActorService.Register:input_type -> grpc.RegisterRequest
+	1, // 4: grpc.ActorRegistry.ShareActors:input_type -> grpc.ShareActorsRequest
+	6, // 5: grpc.ActorService.Send:output_type -> grpc.SendResponse
+	5, // 6: grpc.ActorService.Register:output_type -> grpc.RegisterResponse
+	3, // 7: grpc.ActorRegistry.ShareActors:output_type -> grpc.ShareActorsResponse
+	5, // [5:8] is the sub-list for method output_type
+	2, // [2:5] is the sub-list for method input_type
+	2, // [2:2] is the sub-list for extension type_name
+	2, // [2:2] is the sub-list for extension extendee
+	0, // [0:2] is the sub-list for field type_name
 }
 
 func init() { file_actor_proto_init() }
@@ -186,9 +479,9 @@ func file_actor_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_actor_proto_rawDesc), len(file_actor_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   2,
+			NumMessages:   7,
 			NumExtensions: 0,
-			NumServices:   1,
+			NumServices:   2,
 		},
 		GoTypes:           file_actor_proto_goTypes,
 		DependencyIndexes: file_actor_proto_depIdxs,

@@ -10,10 +10,17 @@ import (
 	"github.com/rickKoch/opsflow/tracing"
 )
 
-// Registry manages local actors.
+// Registry manages local and remote actors.
+type RemoteActorRef struct {
+	ID       PID
+	Address  string
+	LastSeen time.Time
+}
+
 type Registry struct {
 	mu              sync.RWMutex
-	refs            map[PID]*ActorRef
+	localRefs       map[PID]*ActorRef
+	remoteRefs      map[PID]*RemoteActorRef
 	pers            persistence.Persistence
 	log             logging.Logger
 	tracer          tracing.Tracer
@@ -27,7 +34,95 @@ func NewRegistry(p persistence.Persistence, log logging.Logger, tracer tracing.T
 	if tracer == nil {
 		tracer = tracing.NoopTracer{}
 	}
-	return &Registry{refs: make(map[PID]*ActorRef), pers: p, log: log, tracer: tracer}
+	return &Registry{
+		localRefs:  make(map[PID]*ActorRef),
+		remoteRefs: make(map[PID]*RemoteActorRef),
+		pers:       p,
+		log:        log,
+		tracer:     tracer,
+	}
+}
+
+// RegisterRemote registers or updates a single remote actor.
+func (r *Registry) RegisterRemote(a RemoteActorRef) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.remoteRefs[a.ID] = &RemoteActorRef{ID: a.ID, Address: a.Address, LastSeen: time.Now()}
+}
+
+// UpdateRemoteActors replaces/updates remote refs from a peer push.
+func (r *Registry) UpdateRemoteActors(ctx context.Context, actors []RemoteActorRef) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, a := range actors {
+		r.remoteRefs[a.ID] = &RemoteActorRef{ID: a.ID, Address: a.Address, LastSeen: a.LastSeen}
+	}
+}
+
+// GetRemote returns the remote actor ref for a pid if present.
+func (r *Registry) GetRemote(id PID) (*RemoteActorRef, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	ra, ok := r.remoteRefs[id]
+	return ra, ok
+}
+
+// ListLocalActors returns a slice of local actors as RemoteActorRef entries (address empty for local).
+func (r *Registry) ListLocalActors() []RemoteActorRef {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	out := make([]RemoteActorRef, 0, len(r.localRefs))
+	for id := range r.localRefs {
+		out = append(out, RemoteActorRef{ID: id, Address: ""})
+	}
+	return out
+}
+
+// ListLocalActorsWithAddress returns local actors including the node address field.
+// For local entries the Address field is empty; callers can set it when building
+// propagation/Register requests to indicate where these actors can be reached.
+func (r *Registry) ListLocalActorsWithAddress(addr string) []RemoteActorRef {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	out := make([]RemoteActorRef, 0, len(r.localRefs))
+	for id := range r.localRefs {
+		out = append(out, RemoteActorRef{ID: id, Address: addr})
+	}
+	return out
+}
+
+// RemoveRemote deletes a remote actor entry explicitly.
+func (r *Registry) RemoveRemote(id PID) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.remoteRefs, id)
+}
+
+// StartRemotePruner periodically removes remote actors that have not been seen within ttl.
+func (r *Registry) StartRemotePruner(ctx context.Context, ttl time.Duration, interval time.Duration) {
+	if ttl <= 0 || interval <= 0 {
+		return
+	}
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				cutoff := time.Now().Add(-ttl)
+				r.mu.Lock()
+				for id, ra := range r.remoteRefs {
+					if ra.LastSeen.Before(cutoff) {
+						delete(r.remoteRefs, id)
+						r.log.Info("pruned stale remote actor", "id", id, "addr", ra.Address)
+					}
+				}
+				r.mu.Unlock()
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
 }
 
 // StartPersistenceLoop starts a background goroutine that periodically persists actor snapshots and mailboxes.
@@ -53,8 +148,8 @@ func (r *Registry) StartPersistenceLoop(ctx context.Context, interval time.Durat
 // SaveAll persists snapshots and mailboxes for all registered actors.
 func (r *Registry) SaveAll(ctx context.Context) error {
 	r.mu.RLock()
-	ids := make([]PID, 0, len(r.refs))
-	for id := range r.refs {
+	ids := make([]PID, 0, len(r.localRefs))
+	for id := range r.localRefs {
 		ids = append(ids, id)
 	}
 	r.mu.RUnlock()
@@ -68,12 +163,20 @@ func (r *Registry) SaveAll(ctx context.Context) error {
 func (r *Registry) Spawn(ctx context.Context, id PID, a Actor, mailboxSize int) (*ActorRef, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if _, ok := r.refs[id]; ok {
+	if _, ok := r.localRefs[id]; ok {
 		return nil, nil
 	}
 	cctx, cancel := context.WithCancel(ctx)
-	ref := &ActorRef{ID: id, mail: newMailboxFor(id, r.pers, mailboxSize), actor: a, stopped: make(chan struct{}), created: time.Now(), ctx: cctx, cancel: cancel}
-	r.refs[id] = ref
+	ref := &ActorRef{
+		ID:      id,
+		mail:    newMailboxFor(id, r.pers, mailboxSize),
+		actor:   a,
+		stopped: make(chan struct{}),
+		created: time.Now(),
+		ctx:     cctx,
+		cancel:  cancel,
+	}
+	r.localRefs[id] = ref
 	go r.runActor(ref.ctx, ref)
 	r.log.Info("spawned actor", "id", id)
 	return ref, nil
@@ -81,7 +184,7 @@ func (r *Registry) Spawn(ctx context.Context, id PID, a Actor, mailboxSize int) 
 
 func (r *Registry) Send(ctx context.Context, id PID, msg Message) error {
 	r.mu.RLock()
-	ref, ok := r.refs[id]
+	ref, ok := r.localRefs[id]
 	r.mu.RUnlock()
 	if !ok {
 		return ErrNotFound

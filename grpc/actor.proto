@@ -11,7 +11,44 @@ message ActorMessage {
 
 service ActorService {
   rpc Send(ActorMessage) returns (SendResponse);
+  // Register registers this node and its local actors with a peer.
+  // Service implementations should use this to propagate actor availability
+  // so callers can route to remote actors when not local.
+  rpc Register(RegisterRequest) returns (RegisterResponse);
 }
+
+service ActorRegistry {
+  rpc ShareActors(ShareActorsRequest) returns (ShareActorsResponse);
+}
+
+message ShareActorsRequest {
+  repeated ActorInfo actors = 1;
+}
+
+message ActorInfo {
+  string name = 1;
+  string address = 2;
+}
+
+message ShareActorsResponse {
+  bool success = 1;
+  string error = 2;
+}
+
+message RegisterRequest {
+  // unique identifier for the registering node/service
+  string service_id = 1;
+  // dialable address (host:port) for this service's ActorService
+  string address = 2;
+  // list of actor names currently hosted on the registering node
+  repeated ActorInfo actors = 3;
+}
+
+message RegisterResponse {
+  bool success = 1;
+  string error = 2;
+}
+
 
 message SendResponse {
   bool ok = 1;

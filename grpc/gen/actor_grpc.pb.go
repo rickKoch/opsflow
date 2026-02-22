@@ -19,7 +19,8 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	ActorService_Send_FullMethodName = "/grpc.ActorService/Send"
+	ActorService_Send_FullMethodName     = "/grpc.ActorService/Send"
+	ActorService_Register_FullMethodName = "/grpc.ActorService/Register"
 )
 
 // ActorServiceClient is the client API for ActorService service.
@@ -27,6 +28,10 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type ActorServiceClient interface {
 	Send(ctx context.Context, in *ActorMessage, opts ...grpc.CallOption) (*SendResponse, error)
+	// Register registers this node and its local actors with a peer.
+	// Service implementations should use this to propagate actor availability
+	// so callers can route to remote actors when not local.
+	Register(ctx context.Context, in *RegisterRequest, opts ...grpc.CallOption) (*RegisterResponse, error)
 }
 
 type actorServiceClient struct {
@@ -47,11 +52,25 @@ func (c *actorServiceClient) Send(ctx context.Context, in *ActorMessage, opts ..
 	return out, nil
 }
 
+func (c *actorServiceClient) Register(ctx context.Context, in *RegisterRequest, opts ...grpc.CallOption) (*RegisterResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RegisterResponse)
+	err := c.cc.Invoke(ctx, ActorService_Register_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ActorServiceServer is the server API for ActorService service.
 // All implementations must embed UnimplementedActorServiceServer
 // for forward compatibility.
 type ActorServiceServer interface {
 	Send(context.Context, *ActorMessage) (*SendResponse, error)
+	// Register registers this node and its local actors with a peer.
+	// Service implementations should use this to propagate actor availability
+	// so callers can route to remote actors when not local.
+	Register(context.Context, *RegisterRequest) (*RegisterResponse, error)
 	mustEmbedUnimplementedActorServiceServer()
 }
 
@@ -64,6 +83,9 @@ type UnimplementedActorServiceServer struct{}
 
 func (UnimplementedActorServiceServer) Send(context.Context, *ActorMessage) (*SendResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Send not implemented")
+}
+func (UnimplementedActorServiceServer) Register(context.Context, *RegisterRequest) (*RegisterResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Register not implemented")
 }
 func (UnimplementedActorServiceServer) mustEmbedUnimplementedActorServiceServer() {}
 func (UnimplementedActorServiceServer) testEmbeddedByValue()                      {}
@@ -104,6 +126,24 @@ func _ActorService_Send_Handler(srv interface{}, ctx context.Context, dec func(i
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ActorService_Register_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RegisterRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ActorServiceServer).Register(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ActorService_Register_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ActorServiceServer).Register(ctx, req.(*RegisterRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ActorService_ServiceDesc is the grpc.ServiceDesc for ActorService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -114,6 +154,112 @@ var ActorService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Send",
 			Handler:    _ActorService_Send_Handler,
+		},
+		{
+			MethodName: "Register",
+			Handler:    _ActorService_Register_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "actor.proto",
+}
+
+const (
+	ActorRegistry_ShareActors_FullMethodName = "/grpc.ActorRegistry/ShareActors"
+)
+
+// ActorRegistryClient is the client API for ActorRegistry service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+type ActorRegistryClient interface {
+	ShareActors(ctx context.Context, in *ShareActorsRequest, opts ...grpc.CallOption) (*ShareActorsResponse, error)
+}
+
+type actorRegistryClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewActorRegistryClient(cc grpc.ClientConnInterface) ActorRegistryClient {
+	return &actorRegistryClient{cc}
+}
+
+func (c *actorRegistryClient) ShareActors(ctx context.Context, in *ShareActorsRequest, opts ...grpc.CallOption) (*ShareActorsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ShareActorsResponse)
+	err := c.cc.Invoke(ctx, ActorRegistry_ShareActors_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// ActorRegistryServer is the server API for ActorRegistry service.
+// All implementations must embed UnimplementedActorRegistryServer
+// for forward compatibility.
+type ActorRegistryServer interface {
+	ShareActors(context.Context, *ShareActorsRequest) (*ShareActorsResponse, error)
+	mustEmbedUnimplementedActorRegistryServer()
+}
+
+// UnimplementedActorRegistryServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedActorRegistryServer struct{}
+
+func (UnimplementedActorRegistryServer) ShareActors(context.Context, *ShareActorsRequest) (*ShareActorsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ShareActors not implemented")
+}
+func (UnimplementedActorRegistryServer) mustEmbedUnimplementedActorRegistryServer() {}
+func (UnimplementedActorRegistryServer) testEmbeddedByValue()                       {}
+
+// UnsafeActorRegistryServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to ActorRegistryServer will
+// result in compilation errors.
+type UnsafeActorRegistryServer interface {
+	mustEmbedUnimplementedActorRegistryServer()
+}
+
+func RegisterActorRegistryServer(s grpc.ServiceRegistrar, srv ActorRegistryServer) {
+	// If the following call panics, it indicates UnimplementedActorRegistryServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&ActorRegistry_ServiceDesc, srv)
+}
+
+func _ActorRegistry_ShareActors_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ShareActorsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ActorRegistryServer).ShareActors(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ActorRegistry_ShareActors_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ActorRegistryServer).ShareActors(ctx, req.(*ShareActorsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// ActorRegistry_ServiceDesc is the grpc.ServiceDesc for ActorRegistry service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var ActorRegistry_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "grpc.ActorRegistry",
+	HandlerType: (*ActorRegistryServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "ShareActors",
+			Handler:    _ActorRegistry_ShareActors_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
