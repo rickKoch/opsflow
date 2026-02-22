@@ -204,3 +204,26 @@ func (o *Orchestrator) Shutdown(ctx context.Context) error {
 func (o *Orchestrator) StartRemotePruner(ctx context.Context, ttl time.Duration, interval time.Duration) {
 	o.reg.StartRemotePruner(ctx, ttl, interval)
 }
+
+// HandleRegister handles an incoming RegisterRequest from a peer and updates the
+// local registry with the provided remote actor information.
+func (o *Orchestrator) HandleRegister(ctx context.Context, req *genpb.RegisterRequest) (*genpb.RegisterResponse, error) {
+	var remoteActors []actor.RemoteActorRef
+	now := time.Now()
+	for _, a := range req.GetActors() {
+		remoteActors = append(remoteActors, actor.RemoteActorRef{ID: actor.PID(a.GetName()), Address: req.GetAddress(), LastSeen: now})
+	}
+	o.reg.UpdateRemoteActors(ctx, remoteActors)
+	return &genpb.RegisterResponse{Success: true}, nil
+}
+
+// HandleShareActors handles ActorRegistry.ShareActors calls from peers.
+func (o *Orchestrator) HandleShareActors(ctx context.Context, req *genpb.ShareActorsRequest) (*genpb.ShareActorsResponse, error) {
+	var remoteActors []actor.RemoteActorRef
+	now := time.Now()
+	for _, a := range req.GetActors() {
+		remoteActors = append(remoteActors, actor.RemoteActorRef{ID: actor.PID(a.GetName()), Address: a.GetAddress(), LastSeen: now})
+	}
+	o.reg.UpdateRemoteActors(ctx, remoteActors)
+	return &genpb.ShareActorsResponse{Success: true}, nil
+}

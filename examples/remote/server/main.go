@@ -40,7 +40,7 @@ func main() {
 		log.Printf("spawned actor %s", *actorName)
 	}
 
-	srv := grpcsrv.NewServer(reg)
+	srv := grpcsrv.NewServer(orch)
 	go func() {
 		if err := srv.Serve(addr); err != nil {
 			log.Fatal(err)

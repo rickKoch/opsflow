@@ -3,7 +3,6 @@ package grpcsrv
 import (
 	"context"
 	"net"
-	"time"
 
 	"github.com/rickKoch/opsflow/actor"
 	genpb "github.com/rickKoch/opsflow/grpc/gen"
@@ -11,8 +10,8 @@ import (
 )
 
 type Server struct {
-	srv *grpc.Server
-	reg *actor.Registry
+	srv  *grpc.Server
+	orch OrchestratorHandler
 }
 
 // mustEmbedUnimplementedActorServiceServer satisfies generated interface for forward compatibility.
@@ -25,25 +24,38 @@ func (unimplementedEmbed) testEmbeddedByValue()                      {}
 // Server implements generated ActorServiceServer
 type ServerImpl struct {
 	genpb.UnimplementedActorServiceServer
-	srv *grpc.Server
-	reg *actor.Registry
+	srv  *grpc.Server
+	orch OrchestratorHandler
 }
 
-func NewServer(reg *actor.Registry) *ServerImpl {
+// OrchestratorHandler defines the methods the gRPC server needs from the orchestrator.
+// We declare it here to avoid a circular import: orchestrator implements these
+// methods and can be passed directly to NewServer.
+type OrchestratorHandler interface {
+	Send(ctx context.Context, id actor.PID, msg actor.Message) error
+	HandleRegister(ctx context.Context, req *genpb.RegisterRequest) (*genpb.RegisterResponse, error)
+	HandleShareActors(ctx context.Context, req *genpb.ShareActorsRequest) (*genpb.ShareActorsResponse, error)
+}
+
+func NewServer(orch OrchestratorHandler) *ServerImpl {
 	s := grpc.NewServer()
-	srv := &ServerImpl{srv: s, reg: reg}
+	srv := &ServerImpl{srv: s, orch: orch}
 	// register generated ActorService server implementation
 	genpb.RegisterActorServiceServer(s, srv)
 	// register ActorRegistry server for ShareActors propagation
-	genpb.RegisterActorRegistryServer(s, &RegistryServer{reg: reg})
+	genpb.RegisterActorRegistryServer(s, &RegistryServer{orch: orch})
 	return srv
 }
 
 func (s *ServerImpl) Send(ctx context.Context, msg *genpb.ActorMessage) (*genpb.SendResponse, error) {
 	p := actor.PID(msg.Pid)
 	m := actor.Message{Payload: msg.Payload, Type: msg.Typ}
-	if err := s.reg.Send(ctx, p, m); err != nil {
-		return &genpb.SendResponse{Ok: false, Error: err.Error()}, nil
+	if s.orch != nil {
+		if err := s.orch.Send(ctx, p, m); err != nil {
+			return &genpb.SendResponse{Ok: false, Error: err.Error()}, nil
+		}
+	} else {
+		return &genpb.SendResponse{Ok: false, Error: "orchestrator not configured"}, nil
 	}
 	return &genpb.SendResponse{Ok: true}, nil
 }
@@ -51,13 +63,10 @@ func (s *ServerImpl) Send(ctx context.Context, msg *genpb.ActorMessage) (*genpb.
 // Register receives a registration from a peer node announcing its actors.
 // It updates the local registry with remote actor refs (address is dialable).
 func (s *ServerImpl) Register(ctx context.Context, req *genpb.RegisterRequest) (*genpb.RegisterResponse, error) {
-	var remoteActors []actor.RemoteActorRef
-	now := time.Now()
-	for _, a := range req.GetActors() {
-		remoteActors = append(remoteActors, actor.RemoteActorRef{ID: actor.PID(a.GetName()), Address: req.GetAddress(), LastSeen: now})
+	if s.orch == nil {
+		return &genpb.RegisterResponse{Success: false, Error: "orchestrator not configured"}, nil
 	}
-	s.reg.UpdateRemoteActors(ctx, remoteActors)
-	return &genpb.RegisterResponse{Success: true}, nil
+	return s.orch.HandleRegister(ctx, req)
 }
 
 func (s *ServerImpl) Serve(laddr string) error {
@@ -71,16 +80,13 @@ func (s *ServerImpl) Serve(laddr string) error {
 // RegistryServer implements generated ActorRegistryServer to receive shared actor lists.
 type RegistryServer struct {
 	genpb.UnimplementedActorRegistryServer
-	reg *actor.Registry
+	orch OrchestratorHandler
 }
 
 // ShareActors updates the local registry with remote actors provided by a peer.
 func (rs *RegistryServer) ShareActors(ctx context.Context, req *genpb.ShareActorsRequest) (*genpb.ShareActorsResponse, error) {
-	var remoteActors []actor.RemoteActorRef
-	now := time.Now()
-	for _, a := range req.GetActors() {
-		remoteActors = append(remoteActors, actor.RemoteActorRef{ID: actor.PID(a.GetName()), Address: a.GetAddress(), LastSeen: now})
+	if rs.orch == nil {
+		return &genpb.ShareActorsResponse{Success: false, Error: "orchestrator not configured"}, nil
 	}
-	rs.reg.UpdateRemoteActors(ctx, remoteActors)
-	return &genpb.ShareActorsResponse{Success: true}, nil
+	return rs.orch.HandleShareActors(ctx, req)
 }
