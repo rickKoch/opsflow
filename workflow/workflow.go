@@ -20,6 +20,8 @@ type Step struct {
 	Message    actor.Message `json:"message"`
 	MaxRetries int           `json:"max_retries"`
 	Backoff    time.Duration `json:"backoff"`
+	// Optional Cron schedule for this individual step.
+	Cron string `json:"cron,omitempty"`
 	// Depends lists step IDs that must complete before this step is eligible to run.
 	Depends []string `json:"depends,omitempty"`
 }

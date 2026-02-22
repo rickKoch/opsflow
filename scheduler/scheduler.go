@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/rickKoch/opsflow/logging"
 	cron "github.com/robfig/cron/v3"
@@ -22,7 +23,16 @@ type Job struct {
 	Type           string `json:"type"` // e.g. "workflow"
 	WorkflowID     string `json:"workflow_id"`
 	CronExpression string `json:"cron"`
-	Enabled        bool   `json:"enabled"`
+	// TimeZone is an optional IANA time zone name (eg. "America/New_York").
+	// If set, the scheduler will interpret the cron expression in that zone.
+	TimeZone string `json:"timezone,omitempty"`
+	// Actor scheduling fields (optional)
+	ActorID string `json:"actor_id,omitempty"`
+	Payload []byte `json:"payload,omitempty"`
+	MsgType string `json:"msg_type,omitempty"`
+	// StepID is used when scheduling a specific workflow step.
+	StepID  string `json:"step_id,omitempty"`
+	Enabled bool   `json:"enabled"`
 }
 
 type Scheduler struct {
@@ -83,7 +93,17 @@ func (s *Scheduler) AddOrUpdate(ctx context.Context, job Job) error {
 			s.log.Info("scheduler: job invocation failed", "job_id", job.ID, "err", err)
 		}
 	}
-	eid, err := s.cron.AddFunc(job.CronExpression, j)
+	// If a TimeZone is provided, validate it and prepend the CRON_TZ prefix
+	spec := job.CronExpression
+	if job.TimeZone != "" {
+		// validate time zone
+		if _, err := time.LoadLocation(job.TimeZone); err != nil {
+			return fmt.Errorf("invalid time zone %q: %w", job.TimeZone, err)
+		}
+		spec = "CRON_TZ=" + job.TimeZone + " " + spec
+	}
+
+	eid, err := s.cron.AddFunc(spec, j)
 	if err != nil {
 		return fmt.Errorf("add cron job: %w", err)
 	}

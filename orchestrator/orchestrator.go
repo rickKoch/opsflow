@@ -53,25 +53,72 @@ func NewOrchestratorWithRouterConfig(cfg Config, poolCfg grpcpool.PoolConfig) *O
 	orch := &Orchestrator{reg: cfg.Registry, pers: cfg.Persistence, log: log, tracer: tracer, router: r, pool: grpcpool.NewWithConfig(poolCfg)}
 	// initialize scheduler with invoke callback that starts workflows by id
 	orch.sched = scheduler.NewScheduler(func(ctx context.Context, job scheduler.Job) error {
-		// load workflow from persistence
-		if orch.pers == nil {
-			orch.log.Info("scheduler: no persistence available to load workflow", "workflow_id", job.WorkflowID)
+		// support both workflow and actor jobs
+		switch job.Type {
+		case "workflow":
+			// load workflow from persistence
+			if orch.pers == nil {
+				orch.log.Info("scheduler: no persistence available to load workflow", "workflow_id", job.WorkflowID)
+				return nil
+			}
+			b, err := orch.pers.LoadSnapshot(context.Background(), persistence.PID("workflow_def:"+job.WorkflowID))
+			if err != nil || len(b) == 0 {
+				orch.log.Info("scheduler: workflow not found", "workflow_id", job.WorkflowID, "err", err)
+				return nil
+			}
+			var wf workflow.Workflow
+			if err := json.Unmarshal(b, &wf); err != nil {
+				orch.log.Info("scheduler: failed to unmarshal workflow", "workflow_id", job.WorkflowID, "err", err)
+				return err
+			}
+			// clear previous run state so scheduled runs execute each time
+			_ = orch.pers.SaveSnapshot(context.Background(), persistence.PID("workflow:"+job.WorkflowID), nil)
+			orch.log.Info("scheduler: triggering workflow", "workflow_id", job.WorkflowID)
+			return orch.StartWorkflow(ctx, &wf)
+		case "workflow_step":
+			// schedule a specific step within a workflow by id
+			if orch.pers == nil {
+				orch.log.Info("scheduler: no persistence available to load workflow", "workflow_id", job.WorkflowID)
+				return nil
+			}
+			b, err := orch.pers.LoadSnapshot(context.Background(), persistence.PID("workflow_def:"+job.WorkflowID))
+			if err != nil || len(b) == 0 {
+				orch.log.Info("scheduler: workflow not found for step", "workflow_id", job.WorkflowID, "err", err)
+				return nil
+			}
+			var wf workflow.Workflow
+			if err := json.Unmarshal(b, &wf); err != nil {
+				orch.log.Info("scheduler: failed to unmarshal workflow for step", "workflow_id", job.WorkflowID, "err", err)
+				return err
+			}
+			// find step
+			var step *workflow.Step
+			for i := range wf.Steps {
+				if wf.Steps[i].ID == job.StepID {
+					step = &wf.Steps[i]
+					break
+				}
+			}
+			if step == nil {
+				orch.log.Info("scheduler: step not found", "workflow_id", job.WorkflowID, "step_id", job.StepID)
+				return nil
+			}
+			orch.log.Info("scheduler: triggering workflow step", "workflow_id", job.WorkflowID, "step_id", job.StepID)
+			// run the single step by invoking its target directly
+			return orch.Send(ctx, step.Target, step.Message)
+		case "actor":
+			// send message to actor
+			if job.ActorID == "" {
+				orch.log.Info("scheduler: actor job missing actor id", "job_id", job.ID)
+				return nil
+			}
+			msg := actor.Message{Payload: job.Payload, Type: job.MsgType}
+			orch.log.Info("scheduler: sending scheduled actor message", "actor", job.ActorID, "job_id", job.ID)
+			return orch.Send(ctx, actor.PID(job.ActorID), msg)
+		default:
+			orch.log.Info("scheduler: unknown job type", "type", job.Type, "job_id", job.ID)
 			return nil
 		}
-		b, err := orch.pers.LoadSnapshot(context.Background(), persistence.PID("workflow_def:"+job.WorkflowID))
-		if err != nil || len(b) == 0 {
-			orch.log.Info("scheduler: workflow not found", "workflow_id", job.WorkflowID, "err", err)
-			return nil
-		}
-		var wf workflow.Workflow
-		if err := json.Unmarshal(b, &wf); err != nil {
-			orch.log.Info("scheduler: failed to unmarshal workflow", "workflow_id", job.WorkflowID, "err", err)
-			return err
-		}
-		// clear previous run state so scheduled runs execute each time
-		_ = orch.pers.SaveSnapshot(context.Background(), persistence.PID("workflow:"+job.WorkflowID), nil)
-		orch.log.Info("scheduler: triggering workflow", "workflow_id", job.WorkflowID)
-		return orch.StartWorkflow(ctx, &wf)
 	}, log)
 	orch.sched.Start()
 	// restore persisted schedules (best-effort)
@@ -381,6 +428,9 @@ func (o *Orchestrator) StartWorkflowByID(ctx context.Context, id string) error {
 	}
 	return o.StartWorkflow(ctx, &wf)
 }
+
+// Scheduler returns the orchestrator's scheduler instance for examples/tests.
+func (o *Orchestrator) Scheduler() *scheduler.Scheduler { return o.sched }
 
 // StartRemotePruner starts the registry remote pruner with given ttl and check interval.
 func (o *Orchestrator) StartRemotePruner(ctx context.Context, ttl time.Duration, interval time.Duration) {
