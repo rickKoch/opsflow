@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/rickKoch/opsflow/actor"
+	grpcsrv "github.com/rickKoch/opsflow/grpc"
 	genpb "github.com/rickKoch/opsflow/grpc/gen"
 	"github.com/rickKoch/opsflow/internal/grpcpool"
 	"github.com/rickKoch/opsflow/logging"
@@ -157,4 +158,87 @@ type testRegistryServer struct {
 func (s *testRegistryServer) ShareActors(ctx context.Context, req *genpb.ShareActorsRequest) (*genpb.ShareActorsResponse, error) {
 	s.recv <- req
 	return &genpb.ShareActorsResponse{Success: true}, nil
+}
+
+// testRegisterHandler implements ActorServiceServer for registering remote actors
+type testRegisterHandler struct {
+	genpb.UnimplementedActorServiceServer
+	reg *actor.Registry
+}
+
+func (h *testRegisterHandler) Send(ctx context.Context, msg *genpb.ActorMessage) (*genpb.SendResponse, error) {
+	// B does not host the actor; Send here is not used in this test
+	return &genpb.SendResponse{Ok: false, Error: "not hosted"}, nil
+}
+
+func (h *testRegisterHandler) Register(ctx context.Context, req *genpb.RegisterRequest) (*genpb.RegisterResponse, error) {
+	var remoteActors []actor.RemoteActorRef
+	now := time.Now()
+	for _, a := range req.GetActors() {
+		remoteActors = append(remoteActors, actor.RemoteActorRef{ID: actor.PID(a.GetName()), Address: a.GetAddress(), LastSeen: now})
+	}
+	h.reg.UpdateRemoteActors(ctx, remoteActors)
+	return &genpb.RegisterResponse{Success: true}, nil
+}
+
+// TestRegisterRPCPropagation verifies that when a peer calls ActorService.Register
+// the registry on the receiving node is updated and the router/orchestrator will
+// forward messages to the remote actor by dialing the provided address.
+func TestRegisterRPCPropagation(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	store := persistence.NewFileStore(dir)
+	reg := actor.NewRegistry(store, logging.StdLogger{}, nil)
+
+	// Start a test ActorService gRPC server (peer A) that captures received messages.
+	lisA, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen A: %v", err)
+	}
+	srvA := grpc.NewServer()
+	recvCh := make(chan *genpb.ActorMessage, 4)
+	genpb.RegisterActorServiceServer(srvA, &testActorServiceServer{recv: recvCh})
+	go srvA.Serve(lisA)
+	defer func() { srvA.Stop(); lisA.Close() }()
+
+	// Start ActorService on node B (our orchestrator/registry) and listen
+	lisB, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen B: %v", err)
+	}
+	srvB := grpc.NewServer()
+	genpb.RegisterActorServiceServer(srvB, &testRegisterHandler{reg: reg})
+	go srvB.Serve(lisB)
+	defer func() { srvB.Stop(); lisB.Close() }()
+
+	// Build a client to call Register on node B, advertising actor on A
+	bAddr := lisB.Addr().String()
+	aAddr := lisA.Addr().String()
+	c, err := grpcsrv.NewClientWithOpts(bAddr, 3, 50*time.Millisecond, 2*time.Second)
+	if err != nil {
+		t.Fatalf("client dial B: %v", err)
+	}
+	defer c.Close()
+
+	infos := []*genpb.ActorInfo{{Name: "echo", Address: aAddr}}
+	_, err = c.Register(ctx, "serviceA", aAddr, infos)
+	if err != nil {
+		t.Fatalf("register rpc failed: %v", err)
+	}
+
+	// create orchestrator on B and send message to remote actor
+	orch := NewOrchestratorWithRouterConfig(Config{Registry: reg, Persistence: store, Logger: logging.StdLogger{}, Tracer: nil}, grpcpool.PoolConfig{DialTimeout: 2 * time.Second, MaxConnsPerAddr: 1})
+
+	if err := orch.Send(ctx, actor.PID("echo"), actor.Message{Payload: []byte("ping via register")}); err != nil {
+		t.Fatalf("orch send failed: %v", err)
+	}
+
+	select {
+	case m := <-recvCh:
+		if string(m.Payload) != "ping via register" {
+			t.Fatalf("unexpected payload: %s", string(m.Payload))
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("peer A did not receive message")
+	}
 }
