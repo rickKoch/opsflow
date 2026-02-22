@@ -10,8 +10,8 @@ import (
 
 	"github.com/rickKoch/opsflow/actor"
 	grpcsrv "github.com/rickKoch/opsflow/grpc"
-	genpb "github.com/rickKoch/opsflow/grpc/gen"
 	"github.com/rickKoch/opsflow/logging"
+	"github.com/rickKoch/opsflow/orchestrator"
 )
 
 type EchoActor struct{}
@@ -29,10 +29,12 @@ func main() {
 	addr := ":" + *port
 	reg := actor.NewRegistry(nil, logging.StdLogger{}, nil)
 
-	// spawn actor if requested
+	// create orchestrator to manage actors and propagation
+	orch := orchestrator.NewOrchestrator(orchestrator.Config{Registry: reg, Persistence: nil, Logger: logging.StdLogger{}, Tracer: nil})
+
+	// spawn actor if requested via orchestrator
 	if *actorName != "" {
-		_, err := reg.Spawn(context.Background(), actor.PID(*actorName), EchoActor{}, 8)
-		if err != nil {
+		if err := orch.SpawnAndRegister(context.Background(), actor.PID(*actorName), EchoActor{}, 8); err != nil {
 			log.Fatalf("spawn actor: %v", err)
 		}
 		log.Printf("spawned actor %s", *actorName)
@@ -46,41 +48,13 @@ func main() {
 	}()
 	log.Printf("server running %s", addr)
 
-	// if peers provided, periodically call Register on them to announce our actors
+	// if peers provided, tell the orchestrator to propagate our actors via Register RPC
 	if *peers != "" {
 		peerList := strings.Split(*peers, ",")
-		// use serviceID as this host:port
 		serviceID := addr
-		// dialable address should be localhost:port for examples
 		dialAddr := "localhost:" + *port
-		// small initial delay to allow peers to start
-		time.Sleep(500 * time.Millisecond)
-		// use orchestrator-style propagation by creating a simple ticker that uses the generated client
-		go func() {
-			ticker := time.NewTicker(1 * time.Second)
-			defer ticker.Stop()
-			for range ticker.C {
-				locals := reg.ListLocalActors()
-				var infos []*genpb.ActorInfo
-				for _, a := range locals {
-					infos = append(infos, &genpb.ActorInfo{Name: string(a.ID), Address: dialAddr})
-				}
-				for _, p := range peerList {
-					c, err := grpcsrv.NewClientWithOpts(p, 3, 50*time.Millisecond, 2*time.Second)
-					if err != nil {
-						log.Printf("register: dial %s failed: %v", p, err)
-						continue
-					}
-					_, err = c.Register(context.Background(), serviceID, dialAddr, infos)
-					if err != nil {
-						log.Printf("register: call to %s failed: %v", p, err)
-					} else {
-						log.Printf("registered with peer %s", p)
-					}
-					c.Close()
-				}
-			}
-		}()
+		// start propagation using orchestrator helper
+		orch.StartRegisterPropagation(context.Background(), peerList, serviceID, dialAddr, 1*time.Second)
 	}
 
 	select {}
