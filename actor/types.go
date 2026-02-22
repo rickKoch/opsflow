@@ -50,9 +50,13 @@ type chanMailbox struct {
 	ch chan Message
 }
 
-func newChanMailbox(size int) *chanMailbox { return &chanMailbox{ch: make(chan Message, size)} }
+func newChanMailbox(size int) *chanMailbox {
+	return &chanMailbox{ch: make(chan Message, size)}
+}
 
-func (m *chanMailbox) Enqueue(msg Message) { m.ch <- msg }
+func (m *chanMailbox) Enqueue(msg Message) {
+	m.ch <- msg
+}
 
 func (m *chanMailbox) Dequeue() (Message, bool) {
 	select {

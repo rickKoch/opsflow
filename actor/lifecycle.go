@@ -37,7 +37,7 @@ func (r *Registry) restoreActor(ctx context.Context, id PID, a Actor, mailboxSiz
 		return nil, nil
 	}
 	r.mu.Lock()
-	r.refs[id] = ref
+	r.localRefs[id] = ref
 	r.mu.Unlock()
 	go r.runActor(ctx, ref)
 	r.log.Info("restored actor", "id", id)
@@ -49,7 +49,7 @@ func (r *Registry) SaveSnapshot(ctx context.Context, id PID) error {
 	if r.pers == nil {
 		return nil
 	}
-	st := ActorState{CreatedAt: r.refs[id].created}
+	st := ActorState{CreatedAt: r.localRefs[id].created}
 	b, _ := json.Marshal(st)
 	return r.pers.SaveSnapshot(ctx, persistence.PID(id), b)
 }
@@ -60,7 +60,7 @@ func (r *Registry) SaveMailbox(ctx context.Context, id PID) error {
 		return nil
 	}
 	r.mu.RLock()
-	ref, ok := r.refs[id]
+	ref, ok := r.localRefs[id]
 	r.mu.RUnlock()
 	if !ok {
 		return nil
