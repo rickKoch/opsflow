@@ -44,13 +44,18 @@ func main() {
 			{ID: "b", Target: actor.PID("printer2"), Message: actor.Message{Payload: []byte("hello from B")}, MaxRetries: 1, Backoff: 10 * time.Millisecond},
 			{ID: "c", Target: actor.PID("printer3"), Message: actor.Message{Payload: []byte("A and B completed")}, Depends: []string{"a", "b"}, MaxRetries: 1, Backoff: 10 * time.Millisecond},
 		},
+		// schedule this workflow to run every 10 seconds for the example
+		Cron: "@every 10s",
 	}
 
-	// start the workflow (orchestrator auto-selects parallel execution when it sees dependencies)
-	_ = orch.StartWorkflow(ctx, wf)
+	// persist + register the workflow (this also registers the scheduler)
+	if err := orch.RegisterWorkflow(ctx, wf); err != nil {
+		fmt.Println("failed to register workflow:", err)
+		return
+	}
 
 	// wait for workflow to complete by polling persisted state
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(20 * time.Second)
 	for time.Now().Before(deadline) {
 		b, _ := store.LoadSnapshot(ctx, persistence.PID("workflow:example_wf"))
 		if b != nil && len(b) > 0 {

@@ -2,24 +2,101 @@ package scheduler
 
 import (
 	"context"
-	"time"
+	"fmt"
+	"sync"
 
-	"github.com/rickKoch/opsflow/actor"
+	"github.com/rickKoch/opsflow/logging"
+	cron "github.com/robfig/cron/v3"
 )
 
-type Scheduler struct {
+// printfAdapter adapts the repo's structured Logger to a Printf(logger) used by
+// robfig/cron's VerbosePrintfLogger.
+type printfAdapter struct{ l logging.Logger }
+
+func (p printfAdapter) Printf(format string, v ...interface{}) { p.l.Info(fmt.Sprintf(format, v...)) }
+
+// Job represents a scheduled job persisted elsewhere. It carries enough
+// information for the scheduler to invoke the correct actor with message.
+type Job struct {
+	ID             string `json:"id"`
+	Type           string `json:"type"` // e.g. "workflow"
+	WorkflowID     string `json:"workflow_id"`
+	CronExpression string `json:"cron"`
+	Enabled        bool   `json:"enabled"`
 }
 
-func NewScheduler() *Scheduler { return &Scheduler{} }
+type Scheduler struct {
+	mu      sync.Mutex
+	cron    *cron.Cron
+	entries map[string]cron.EntryID // map job.ID -> cron entry id
+	invoke  func(context.Context, Job) error
+	log     logging.Logger
+}
 
-// ScheduleOnce schedules a single message to pid after duration d.
-func (s *Scheduler) ScheduleOnce(ctx context.Context, pid actor.PID, msg actor.Message, d time.Duration, r func(actor.PID, actor.Message) error) {
-	go func() {
-		select {
-		case <-time.After(d):
-			_ = r(pid, msg)
-		case <-ctx.Done():
-			return
+func NewScheduler(invoke func(context.Context, Job) error, log logging.Logger) *Scheduler {
+	if log == nil {
+		log = logging.StdLogger{}
+	}
+	// cron.VerbosePrintfLogger expects a Printf-like logger. Create a small
+	// adapter that delegates to our structured logger.
+	pad := printfAdapter{l: log}
+
+	// Use DelayIfStillRunning to ensure overlapping runs are delayed.
+	c := cron.New(
+		cron.WithChain(cron.DelayIfStillRunning(cron.VerbosePrintfLogger(pad))),
+		cron.WithParser(cron.NewParser(cron.Minute|cron.Hour|cron.Dom|cron.Month|cron.Dow|cron.Descriptor)),
+	)
+	return &Scheduler{cron: c, entries: make(map[string]cron.EntryID), invoke: invoke, log: log}
+}
+
+// Start the underlying cron scheduler.
+func (s *Scheduler) Start() { s.cron.Start() }
+
+// Stop stops the scheduler and waits for running jobs to complete.
+func (s *Scheduler) Stop() context.Context { return s.cron.Stop() }
+
+// AddOrUpdate registers a job with the cron scheduler. If a job with the
+// same ID exists it will be removed first and replaced. The job must be
+// persisted by the caller; this function only affects in-memory scheduling.
+func (s *Scheduler) AddOrUpdate(ctx context.Context, job Job) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !job.Enabled {
+		// If disabled, ensure it's removed from cron
+		if id, ok := s.entries[job.ID]; ok {
+			s.cron.Remove(id)
+			delete(s.entries, job.ID)
 		}
-	}()
+		return nil
+	}
+	// validate cron expression by attempting to add a noop job
+	// first remove existing if present
+	if id, ok := s.entries[job.ID]; ok {
+		s.cron.Remove(id)
+		delete(s.entries, job.ID)
+	}
+	// create job closure
+	j := func() {
+		ctx2 := context.Background()
+		s.log.Info("scheduler: invoking job", "job_id", job.ID, "expr", job.CronExpression)
+		if err := s.invoke(ctx2, job); err != nil {
+			s.log.Info("scheduler: job invocation failed", "job_id", job.ID, "err", err)
+		}
+	}
+	eid, err := s.cron.AddFunc(job.CronExpression, j)
+	if err != nil {
+		return fmt.Errorf("add cron job: %w", err)
+	}
+	s.entries[job.ID] = eid
+	return nil
+}
+
+// Remove deletes a job from the cron scheduler (in-memory only).
+func (s *Scheduler) Remove(jobID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if id, ok := s.entries[jobID]; ok {
+		s.cron.Remove(id)
+		delete(s.entries, jobID)
+	}
 }

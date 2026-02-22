@@ -28,6 +28,8 @@ type Step struct {
 type Workflow struct {
 	ID    string `json:"id"`
 	Steps []Step `json:"steps"`
+	// Optional cron expression to schedule this workflow automatically.
+	Cron string `json:"cron,omitempty"`
 }
 
 // workflowState is persisted between runs.
