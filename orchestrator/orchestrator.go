@@ -11,6 +11,7 @@ import (
 	"github.com/rickKoch/opsflow/persistence"
 	"github.com/rickKoch/opsflow/router"
 	"github.com/rickKoch/opsflow/tracing"
+	"github.com/rickKoch/opsflow/workflow"
 )
 
 // Orchestrator coordinates actor lifecycles and workflows.
@@ -198,6 +199,22 @@ func (o *Orchestrator) Shutdown(ctx context.Context) error {
 		o.router.Close()
 	}
 	return nil
+}
+
+// StartWorkflow uses the orchestrator's routing (local preferring, remote fallback)
+// to execute the provided workflow. Execution runs asynchronously and progress is
+// persisted using the orchestrator's persistence backend.
+func (o *Orchestrator) StartWorkflow(ctx context.Context, wf *workflow.Workflow) error {
+	mgr := workflow.NewManager(o.pers, func(ctx context.Context, id actor.PID, msg actor.Message) error {
+		return o.Send(ctx, id, msg)
+	}, o.log, o.tracer)
+	// auto-select parallel scheduler when any step has explicit dependencies
+	for _, s := range wf.Steps {
+		if len(s.Depends) > 0 {
+			return mgr.StartParallel(ctx, wf)
+		}
+	}
+	return mgr.Start(ctx, wf)
 }
 
 // StartRemotePruner starts the registry remote pruner with given ttl and check interval.
